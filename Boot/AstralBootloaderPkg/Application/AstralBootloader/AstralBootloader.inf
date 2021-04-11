@@ -1,0 +1,33 @@
+[Defines]
+    INF_VERSION = 0x00010006 
+    BASE_NAME = AstralBootloader
+    FILE_GUID = F1F21195-7449-41D0-81F7-A06493A2FA66
+    MODULE_TYPE = UEFI_APPLICATION 
+    VERSION_STRING = 1.0
+    ENTRY_POINT = UefiMain 
+
+[Sources]
+    AstralBootloader.c
+    AstralBootloader.h
+
+[Packages]    
+    MdePkg/MdePkg.dec # Contains include to UefiLib.h etc
+    ../AstralOS/Boot/AstralBootloaderPkg/AstralBootloaderPkg.dec
+    MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+    UefiApplicationEntryPoint
+    UefiRuntimeServicesTableLib
+    UefiBootServicesTableLib
+    MemoryAllocationLib    
+    BaseMemoryLib
+    UefiLib
+    DebugLib
+    BaseLib
+    PcdLib
+    DevicePathLib
+  
+[Depex]
+    TRUE
+
+[Guids]
