@@ -14,5 +14,14 @@ $params += "-drive if=pflash,format=raw,file=$edk2Path\Build\OvmfX64\DEBUG_VS201
 # HDD ESP partition
 $params += "-drive file=fat:rw:$hddPath,index=0,media=disk,driver=raw "
 
-Start-Process -FilePath "qemu-system-x86_64.exe" -WindowStyle Hidden -Wait -ArgumentList $params
-
+$proc = ''
+try
+{
+    $proc = Start-Process -FilePath "qemu-system-x86_64.exe" -WindowStyle Hidden -Passthru -ArgumentList $params
+    Wait-Process $proc.Id
+}
+finally
+{
+    # Catch ctrl+c in powershell, then kill qemu
+    Stop-Process $proc -Force
+}
