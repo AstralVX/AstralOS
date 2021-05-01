@@ -1,11 +1,10 @@
+# CD into dir of PS1 script, as tasks.json puts us in root project
+Push-Location $PSScriptRoot
+[Environment]::CurrentDirectory = $PSScriptRoot
+
 $nasmFolder = "c:\NASM"
 $workingBuildFolder = "Build"
 $binPath = "$workingBuildFolder\bios.bin"
-
-# Cd into working dir for native binaries
-$CWD = [Environment]::CurrentDirectory
-Push-Location $PWD
-[Environment]::CurrentDirectory = $PWD
 
 # Build BIOS via nasm
 $psi = New-object System.Diagnostics.ProcessStartInfo 
@@ -23,10 +22,6 @@ $stderr = $process.StandardError.ReadToEnd()
 $process.WaitForExit() 
 $stdout
 $stderr
-
-# Restore working dir
-Pop-Location
-[Environment]::CurrentDirectory = $CWD
 
 # Run the BIOS in QEMU
 if ($process.ExitCode -eq 0)

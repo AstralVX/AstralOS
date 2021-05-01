@@ -8,45 +8,72 @@ org 0x7c00
 jmp start
 
 init_32b:
-    cli                 ; Clear interrupt flag
-    mov ax, 0x2401      ; Interrupt 0x2401 - Enable A20 gate
-    int 0x15            ; Interrupt vector - Miscellaneous system services
+    cli                     ; Clear interrupt flag
+    mov     ax, 0x2401      ; Interrupt 0x2401 - Enable A20 gate
+    int     0x15            ; Interrupt vector - Miscellaneous system services
 
-    lgdt [gdt_pointer]  ; Load the gdt table
-    mov eax, cr0 
-    or eax, 0x1         ; Set the Protected Mode Enable (PE) bit on CR0 register
-    mov cr0, eax
-    jmp CODE_SEG:boot32 ; Long jump to the code segment
+    lgdt    [gdt_pointer]   ; Load the gdt table
+    mov     eax, cr0 
+    or      eax, 0x1        ; Set the Protected Mode Enable (PE) bit on CR0 register
+    mov     cr0, eax
+    jmp     CODE_SEG:boot32 ; Long jump to the code segment
+
+printCountdown:
+.L1:
+    mov     cx, 0x000a  ; [cx:dx] guesswork to get a good looking delay
+    mov     dx, 0x0000
+    mov     ah, 0x86
+    mov     al, 0       ; Needs to be cleared
+    int     0x15        ; Wait (CX:DX = interval in uS) 
+
+    mov     al, '0'     ; Decimal to ascii, -1, for printing
+    add     al, bl
+    dec     al
+    mov     ah, 0xe
+    int     0x10
+
+    dec     bl          ; Counter from caller stored in BL
+    jnz     .L1
+    ret
 
 printBiosInt:
 .loop:
     lodsb               ; Load string byte from ds:si into al
-    or al, al           ; if al == 0
-    jz .end             ;   ret
-    int 0x10            ; Interrupt vector - Video service 
-    jmp .loop
+    or      al, al           ; if al == 0
+    jz      .end             ;   ret
+    int     0x10            ; Interrupt vector - Video service 
+    jmp     .loop
 .end:
     ret
 
 start:
-    mov ax, 0x3
-    int 0x10            ; Set vga text mode to a known value of 3
+    mov     ax, 0x3
+    int     0x10            ; Set vga text mode to a known value of 3
 
-    mov si, szBanner    ; Move memory location of string into register si
-    mov ah, 0xe         ; Interrupt 0x0e - Write Character in TTY mode
-    call printBiosInt
+    mov     si, szBanner    ; Move memory location of string into register si
+    mov     ah, 0xe         ; Interrupt 0x0e - Write Character in TTY mode
+    call    printBiosInt
 
-    mov si, szHello
-    mov ah, 0xe
-    call printBiosInt
+    mov     si, szHello
+    mov     ah, 0xe
+    call    printBiosInt
 
-    call init_32b
+    mov     si, szCountdownToPM
+    mov     ah, 0xe
+    call    printBiosInt
+
+    mov     bl, 5           ; Counter used in printCountdown uses BL
+    call    printCountdown
+
+    call    init_32b
 
 ;
 ; Consts
 ;
-szBanner: db "--------------------------------- Astral BIOS ---------------------------------", 13, 10, 0
-szHello: db "Starting BIOS in 16 bit", 13, 10, 0
+szBanner:           db "--------------------------------- Astral BIOS ---------------------------------", 13, 10, 0
+szHello:            db "Starting BIOS in Real Mode (16 bit)", 13, 10, 0
+szCountdownToPM:    db "About to transition to Protected Mode (32 bit) in .. ", 0  
+szNewLine:          db 13, 10, 0
 
 gdtStart:
 ; Define the null sector for the 64 bit gdt

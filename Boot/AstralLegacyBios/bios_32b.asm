@@ -1,4 +1,4 @@
-bits 32                 ; Now we're in protected mode, so can't call BIOS interrupts anymore
+bits 32                 ; Now we're in 32 bit Protected Mode (so can't call BIOS interrupts anymore) with virtual addressing 
 
 printVga:
 .loop:
