@@ -1,0 +1,12 @@
+Cygwin:
+
+cd /cygdrive/c/Users/Madara/GitHub/AstralOS/Boot/Debugger16
+gdb.exe -ix "gdb_init_real_mode.txt" -ex "set tdesc filename target.xml" -ex "target remote localhost:1234" -ex "br *0x7c00" -ex "c"
+
+Extra GDB commands from script:
+- break_int : adds a breakpoint on a software interrupt vector (the way the good old MS DOS and BIOS expose their APIs)
+- break_int_if_ah : adds a conditional breakpoint on a software interrupt. AH has to be equals to the given parameter. This is used to filter service calls of interrupts. For instance, you sometimes only wants to break when the function AH=0h of the interruption 10h is called (change screen mode).
+- stepo : this is a kabalistic macro used to 'step-over' function and interrupt calls. How does it work ? The opcode of the current instruction is extracted and if it is a function or interrupt call, the "next" instruction address is computed, a temporary breakpoint is added on that address and the 'continue' function is called.
+- step_until_ret : this is used to singlestep until we encounter a 'RET' instruction.
+- step_until_iret : this is used to singlestep until we encounter an 'IRET' instruction.
+- step_until_int : this is used to singlestep until we encounter an 'INT' instruction.
