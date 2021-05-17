@@ -4,7 +4,7 @@
         {
             "label": "build",
             "type": "shell",
-            "command": "${workspaceFolder}\\Boot\\AstralLegacyBios\\BuildLegacyBootloader.ps1",
+            "command": "${workspaceFolder}\\buildLegacyBootloader.ps1",
             "presentation": 
             {
                 "echo": true, 

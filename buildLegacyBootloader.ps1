@@ -1,20 +1,29 @@
-# CD into dir of PS1 script, as tasks.json puts us in root project
-Push-Location $PSScriptRoot
-[Environment]::CurrentDirectory = $PSScriptRoot
-
+#
+# Build configurations
+#
 $nasmFolder = "c:\NASM"
-$workingBuildFolder = "Build"
+$workingBuildFolder = "build"
+$bootloaderDir = "boot\legacy"
 $bootloader1BinPath = "$workingBuildFolder\BootloaderOne16.bin"
 $bootloader2BinPath = "$workingBuildFolder\BootloaderTwo16.bin"
 $floppyDiskPath = "$workingBuildFolder\floppydisk.img"
 $SECTOR_SIZE = 512
 
+#
+# Functions
+#
 $process = New-Object System.Diagnostics.Process 
 function BuildWithNasm($asmFileName, $outputPath)
 {
+    #
+    # Set working dir for native win32 exe, and cd into it to build with nasm
+    #
+    [Environment]::CurrentDirectory = $bootloaderDir
+    set-location $bootloaderDir
+
     $psi = New-object System.Diagnostics.ProcessStartInfo 
     $psi.FileName = "$nasmFolder\nasm.exe" 
-    $psi.Arguments = "-f bin $asmFileName -o $outputPath"
+    $psi.Arguments = "-f bin ${asmFileName} -o ""..\\..\\$outputPath"" "
     $psi.CreateNoWindow = $true 
     $psi.UseShellExecute = $false 
     $psi.RedirectStandardOutput = $true 
@@ -27,6 +36,9 @@ function BuildWithNasm($asmFileName, $outputPath)
     $process.WaitForExit() 
     $stdout
     $stderr
+    
+    [Environment]::CurrentDirectory = $PSScriptRoot
+    set-location $PSScriptRoot
     
     if ($process.ExitCode -ne 0)
     {
@@ -45,6 +57,21 @@ function WriteToFloppy($floppyData, $dataToWrite, $offset)
         }
     }
 }
+
+function CompileKernel($cFileName, $outputPath)
+{
+
+}
+
+# -------------------------------------------------------------------------------------
+# Main
+# -------------------------------------------------------------------------------------
+
+#
+# Clean out build folder
+#
+Remove-Item "$workingBuildFolder\*" -Force -Recurse -ErrorAction Ignore
+New-Item -ItemType Directory -Force -Path $workingBuildFolder | Out-Null
 
 #
 # Build bootloader stage 1 and stage 2 via nasm

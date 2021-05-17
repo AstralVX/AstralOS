@@ -338,5 +338,4 @@ ASALocalRun/
 
 
 Build/
-Boot/AstralBootloaderPkg/
-Boot/AstralBiosPkg/
+Boot/UefiBootloaderPkg/
