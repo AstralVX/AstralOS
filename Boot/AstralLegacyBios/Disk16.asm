@@ -10,10 +10,10 @@
 ; Clobbers:
 ;   ax, cx, bx
 ;
-LoadDiskSector:
+DiskLoadSecondStage:
     mov     ah, 2       ; Function - read sector
-    mov     al, 8       ; Number of sectors to read (8*512=0x1000)
-    mov     ch, 0       ; Track/cylinder number (0-1023)
+    mov     al, 4       ; Number of sectors to read (4*512=2048)
+    mov     ch, 0       ; Cylinder/track number (0-1023)
     mov     cl, 2       ; Sector number (1-17, e.g. 1 = 0-511B MBR, 2 = 512-1023B)
     mov     dh, 0       ; Head number (0-15)
     mov     dl, DRIVE   ; Drive number (QEMU index)
@@ -24,16 +24,43 @@ LoadDiskSector:
                         ;   AH = INT 13 status
                         ;   AL = numbers of sectors read
     jc      .err
+
+    xor     bx, bx
+    mov     si, szSuccessSectorFound0
+    call    PrintStrInt
+    mov     bl, ch
+    call    PrintHex
+    mov     si, szSuccessSectorFound1
+    call    PrintStrInt
+    mov     bl, dh
+    call    PrintHex    
+    mov     si, szSuccessSectorFound2
+    call    PrintStrInt
+    mov     bl, cl
+    call    PrintHex
+    mov     si, szSuccessSectorFound3
+    call    PrintStrInt
+    mov     bl, al
+    call    PrintHex
+
+    mov     si, szNewLine
+    call    PrintStrInt
+    mov     si, szNewLine
+    call    PrintStrInt
     ret
 
     .err:
         mov     si, szErrLoadDiskSector
-        call    PrintInt
+        call    PrintStrInt
         xor     bx, bx
         mov     bl, ah
         call    PrintHex
         mov     si, szNewLine
-        call    PrintInt        
+        call    PrintStrInt        
         ret
 
-szErrLoadDiskSector:        db "Err - LoadDiskSector ", 0
+szSuccessSectorFound0:      db "Found Stage 2 at Cylinder: ", 0
+szSuccessSectorFound1:      db ", Head: ", 0
+szSuccessSectorFound2:      db ", Sector: ", 0
+szSuccessSectorFound3:      db ", Sector size: ", 0
+szErrLoadDiskSector:        db "Err - LoadDiskSector ", 13, 10, 0

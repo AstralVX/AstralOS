@@ -59,9 +59,12 @@ $floppyDiskSize = 1.44 * 1000 * 1024
 $floppyData = New-Object Byte[] $floppyDiskSize
 $bootloader1Bin = Get-Content $bootloader1BinPath -Encoding Byte -Raw
 $bootloader2Bin = Get-Content $bootloader2BinPath -Encoding Byte -Raw
+
+#
 # Floppy disk map
-WriteToFloppy $floppyData $bootloader1Bin    0
-WriteToFloppy $floppyData $bootloader2Bin    $SECTOR_SIZE
+#
+WriteToFloppy $floppyData $bootloader1Bin 0
+WriteToFloppy $floppyData $bootloader2Bin $SECTOR_SIZE
 
 $floppyStream = [System.IO.File]::OpenWrite($floppyDiskPath)
 $floppyStream.Write($floppyData, 0, $floppyData.Length)

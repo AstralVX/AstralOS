@@ -33,47 +33,37 @@ main:
     sti
 
     mov     ax, 0x3
-    int     0x10                            ; Set VGA screen mode to 3 (80x25)
+    int     0x10                            ; Set VGA screen mode to 3 (text 80x25)  
 
-
-    mov     ah, 80
-.Loop:
-    mov     al, '-'                         ; Pre-pend our banner with '-------'
-    call    PrintChar
-    dec     ah
-    jnz     .Loop
-
-    mov     si, szBanner                    ; Move memory location of string into register SI
-    call    PrintInt                        ; All print functions, require SI to be set to the string 
+    call    PrintBanner
 
     mov     si, szStartedBootloaderRM
-    call    PrintInt
+    call    PrintStrInt
 
-
-
-    ;
-    ; Bassed on configuration params `BOOT_PROTECTED_MODE` 
-    ; - Continue in Real Mode and boot into a 16 bit OS, and boot a 16 bit OS
-    ; - Call into Protected Mode and boot a 32 bit OS
-    ;
-    ;mov     ax, BOOT_PROTECTED_MODE
-    ;cmp     ax, 1                           ; If (BOOT_PROTECTED_MODE)
-    ;jnz     .Boot16BitBootloader
-    ;mov     si, szCountdownToPM             ; Continue with 32 bit
-    ;call    PrintTransitionMessage
-    ;call    Init32b
-    ;jmp     .End
-
-    .Boot16BitBootloader:                   ; Else, we're continuing with 16 bit
-    mov     si, szCountdownToBootLoader
+    mov     si, szReadingDisk
     call    PrintTransitionMessage
-
-    call    LoadDiskSector
-    ;jmp     0x0000:main
+    
+    call    DiskLoadSecondStage
 
     jmp 0x0000:BOOTLOADER_SECOND_STAGE_ADDR
 
-    hlt
+    cli                                     ; Stop interrupts
+    hlt                                     ; Stop CPU until next interrupt (hence CPU stopped)
+
+PrintBanner:
+    mov     cl, 80
+    call    PrintDashedLine
+    mov     cl, 29
+    call    PrintDashedLine
+    mov     si, szBanner                    ; Arg 1 - Move memory location of banner string into register SI
+    mov     bl, 0x1F                        ; Arg 2 - Colour style
+    call    PrintStrColourInt               ; Coloured print interrupt (SI = string, BL = colour)
+    mov     cl, 30
+    call    PrintDashedLine
+    mov     cl, 80
+    call    PrintDashedLine
+    mov     si, szNewLine
+    call    PrintStrInt
     ret
 
 ;
@@ -85,12 +75,9 @@ main:
 ;
 ; Consts
 ;
-szBanner:                   db "-------------------------------- Astral - Bootloader ---------------------------", 13, 10, 0
-;szBanner:                   db "Astral - Bootloader", 13, 10, 0
-szStartedBootloaderRM:      db "Stage 1 - started in Real Mode (16 bit)", 13, 10, 0
-
-;szCountdownToPM:            db "About to transition to Protected Mode (32 bit) in .. ", 0  
-szCountdownToBootLoader:    db "Reading disk to find Stage 2", 13, 10, 13, 10, 0 
+szBanner:                   db " Astral - Bootloader ", 0
+szStartedBootloaderRM:      db "Stage 1 - started in Real Mode (16 bit), TTY", 13, 10, 0
+szReadingDisk:              db "Reading disk to find Stage 2", 13, 10, 0 
 
 
 
