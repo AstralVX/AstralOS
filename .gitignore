@@ -340,3 +340,4 @@ ASALocalRun/
 Build/
 Boot/UefiBootloaderPkg/
 Boot/Debugger16/.gdb_history
+Boot/Debugger16/gdb.exe.stackdump

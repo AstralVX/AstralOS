@@ -69,7 +69,7 @@ PrintBanner:
     call    PrintDashedLine
     mov     cl, 80
     call    PrintDashedLine
-    mov     si, szNewLine
+    mov     si, szNewLineCarriageRet
     call    PrintStrInt
     ret
 

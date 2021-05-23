@@ -146,4 +146,4 @@ PrintColourChar:
 ;
 ; Generic strings
 ;
-szNewLine:                  db 13, 10, 0
+szNewLineCarriageRet:                   db 13, 10, 0

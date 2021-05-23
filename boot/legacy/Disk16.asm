@@ -42,9 +42,9 @@ DiskIntReadSectors:
     mov     bl, al
     call    PrintHex
 
-    mov     si, szNewLine
+    mov     si, szNewLineCarriageRet
     call    PrintStrInt
-    mov     si, szNewLine
+    mov     si, szNewLineCarriageRet
     call    PrintStrInt
     jmp     .end
 
@@ -54,7 +54,7 @@ DiskIntReadSectors:
         xor     bx, bx
         mov     bl, ah
         call    PrintHex
-        mov     si, szNewLine
+        mov     si, szNewLineCarriageRet
         call    PrintStrInt        
         jmp     .end
 

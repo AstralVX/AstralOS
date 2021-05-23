@@ -3,18 +3,28 @@ bits 32                     ; Now we're in 32 bit Protected Mode (so can't call 
 global  yText
 global  xText
 
-
-
 SECTION .data  
-    xyText:     dd  (0xB * 80 * 2)  ; Used in Print32 VGA print, the initial X/Y offset for text in protected mode
+    xyText:     dd  (0xB * 80 * 2)  ; Used in Print32 VGA print, the initial X/Y offset 0xB for text in protected mode
 
 
 SECTION .text
 
 GetKernelEntryPoint:
-    ;pasre dos header here
+    push    ebp                     ; Create stack frame
+    mov     ebp, esp            
+    sub     esp, 0x9                ; Local stack varaibles
+                                    ; [0 - 9]: char hexString[9], 8 bytes used for number, 1 for null
+
     mov     eax, [KERNEL_ADDR_32]
 
+    lea     ecx, [ebp - 8]          ; &hexString
+    mov     edx, eax
+    call    DwordToHexstring    
+    lea     esi, [ebp - 8]
+    call    PrintStrVgaTextMem
+
+    mov     esp, ebp                ; Unwind stack frame
+    pop     ebp
     ret
 
 ;
@@ -36,9 +46,6 @@ boot32:
     mov esi, szHelloFrom32b
     call PrintStrVgaTextMem
 
-    mov esi, szAaa
-    call PrintStrVgaTextMem
-
     ;mov dword [0xb8000], 0x20692048
     
 ;mov edi,0x0A0000
@@ -47,27 +54,14 @@ boot32:
 
     ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
 
-    ;call GetKernelEntryPoint
+    call GetKernelEntryPoint
+
+
+
+    mov esi, szAaa
+    call PrintStrVgaTextMem
 
     
-;DEBUGBREAK
-
-    lea ecx, [ebp - 8]          ; &hexString
-    mov edx, 0xABCD1234
-    call DwordToHexstring
-
-    lea esi, [ebp - 8]
-    call PrintStrVgaTextMem
-
-    lea esi, [ebp - 8]
-    call PrintStrVgaTextMem
-
-    mov esi, szHelloFrom32b
-    call PrintStrVgaTextMem
-
-    mov esi, szHelloFrom32b
-    call PrintStrVgaTextMem
-
     mov esi, szHelloFrom32b
     call PrintStrVgaTextMem
 
@@ -82,5 +76,6 @@ boot32:
 ; Consts used in protected mode.
 ; New lines only supported at end of string, identified by 0xA.
 ;
-szHelloFrom32b: db "Transitioned to Protected Mode (32 bit)", 0xA, 0
-szAaa: db "HELLO", 0
+szHelloFrom32b:                         db "Transitioned to Protected Mode", 0xA, 0
+szAaa:                                  db "HELLO", 0
+szNewLine:                              db 0xA, 0

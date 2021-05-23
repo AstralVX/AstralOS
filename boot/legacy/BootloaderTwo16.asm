@@ -41,7 +41,7 @@ StartCountdown:
 
     dec     bl          ; Counter from caller stored in BL
     jnz     .L1
-    mov     si, szNewLine
+    mov     si, szNewLineCarriageRet
     call    PrintStrInt
     popa
     ret

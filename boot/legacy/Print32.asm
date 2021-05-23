@@ -10,7 +10,7 @@
 ;   eax, ebx, ecx, edx
 ;
 PrintStrVgaTextMem:
-    xor edx, edx
+    xor     edx, edx
     xor     ecx, ecx        ; Count to hold string size
     mov     ebx, [xyText]
     add     ebx, 0xb8000    ; VGA text memory mapped address 0xB8000 (usable even in VGA 640x480 mode)
@@ -34,7 +34,7 @@ PrintStrVgaTextMem:
     jmp     .loop
     
 .finish:
-    imul    ecx, 2          ; Since each text printed consits of 2 bytes
+    imul    ecx, 2          ; Since each text printed consists of 2 bytes
     add     [xyText], ecx   ; Update the global x and y offset for out linear text buffer
 
     cmp     edx, 1          ; If new line was found
@@ -42,14 +42,15 @@ PrintStrVgaTextMem:
     
     ; Round the linear text buffer up to the next 80 (hence next Y line)
     ;   addr = ((0xb8123 + 80 - 1) / 80) * 80;
-    mov     eax, 80         
+    ;   80*2 used in code, as remember each text consumes 2 bytes in buffer
+    mov     eax, (80*2)
     add     eax, [xyText]
-    mov     ecx, 80
+    mov     ecx, (80*2)
     mov     edx, 0
-    div     ecx             ; Unsigned div EDX:EAX (0:B8000) by ECX (80) = result stored in EAX = quotient, EDX = remainder
+    div     ecx             ; Unsigned div EDX:EAX (0:B8000) by ECX (80*2) = result stored in EAX = quotient, EDX = remainder
     mov     edx, eax        ; Ignore remainder and keep quotient
-    mov     eax, 80
-    imul    eax, edx        ; Quotient * 80 = new linear text address offset for a new line
+    mov     eax, (80*2)
+    imul    eax, edx        ; Quotient * (80*2) = new linear text address offset for a new line
     mov     [xyText], eax
 
 .end:
@@ -81,6 +82,8 @@ DwordToHexstring:
 
     dec    ecx
     jnz    .digit_loop      ; } while (--ecx)
+
+    mov byte [edi], 0       ; Append NULL at end
 
     pop    edi
     ret
