@@ -43,7 +43,14 @@ main:
     mov     si, szReadingDisk
     call    PrintTransitionMessage
     
-    call    DiskLoadSecondStage
+    ; Read bootloader stage 2 into mem
+    mov     al, 4                               ; Read 4 sectors (or 4*0x200=2048 bytes)
+    mov     ch, 0                               ; Cylinder 0
+    mov     cl, 2                               ; Sector number 2 (0x200 to 0x400)
+    mov     dh, 0                               ; Head number 0
+    mov     dl, DRIVE                           ; Drive number (QEMU index)
+    mov     bx, BOOTLOADER_SECOND_STAGE_ADDR    ; ES:BX memory addr to load into (we'll put it after bootloader in mem)
+    call    DiskIntReadSectors
 
     jmp 0x0000:BOOTLOADER_SECOND_STAGE_ADDR
 

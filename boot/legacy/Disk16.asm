@@ -6,19 +6,18 @@
 ; Read disk sector for kernel image and map it into memory
 ;
 ; Args:
-;   bx = memory addr to load at
-; Clobbers:
-;   ax, cx, bx
+;   al - Number of sectors to read (4*512=2048)
+;   ch - Cylinder/track number (0-1023)
+;   cl - Sector number (1-17, e.g. 1 = 0-511B MBR, 2 = 512-1023B)
+;   dh - Head number (0-15)
+;   dl - Drive number (QEMU index)
+;   bx - Memory addr to load image at (<1MB)
+;   es:bx - High memory addr to load image (>1MB) i.e. 1000h:0000h (load at 10000h), 
+;           however even though disk controller will write to that mem, realmode code can't access that high
 ;
-DiskLoadSecondStage:
+DiskIntReadSectors:
+    pusha
     mov     ah, 2       ; Function - read sector
-    mov     al, 4       ; Number of sectors to read (4*512=2048)
-    mov     ch, 0       ; Cylinder/track number (0-1023)
-    mov     cl, 2       ; Sector number (1-17, e.g. 1 = 0-511B MBR, 2 = 512-1023B)
-    mov     dh, 0       ; Head number (0-15)
-    mov     dl, DRIVE   ; Drive number (QEMU index)
-    mov     bx, BOOTLOADER_SECOND_STAGE_ADDR  ; es:bx memory addr to load into (we'll put it after bootloader in mem)
-
     int     0x13        ; Low level disk interrupt
                         ;   CF = 0 on success, = 1 on error
                         ;   AH = INT 13 status
@@ -47,7 +46,7 @@ DiskLoadSecondStage:
     call    PrintStrInt
     mov     si, szNewLine
     call    PrintStrInt
-    ret
+    jmp     .end
 
     .err:
         mov     si, szErrLoadDiskSector
@@ -57,10 +56,14 @@ DiskLoadSecondStage:
         call    PrintHex
         mov     si, szNewLine
         call    PrintStrInt        
-        ret
+        jmp     .end
 
-szSuccessSectorFound0:      db "Found Stage 2 at Cylinder: ", 0
+    .end:
+    popa
+    ret
+
+szSuccessSectorFound0:      db "Reading image at Cylinder: ", 0
 szSuccessSectorFound1:      db ", Head: ", 0
 szSuccessSectorFound2:      db ", Sector: ", 0
 szSuccessSectorFound3:      db ", Sector size: ", 0
-szErrLoadDiskSector:        db "Err - LoadDiskSector ", 13, 10, 0
+szErrLoadDiskSector:        db "Err - DiskIntReadSectors ", 13, 10, 0

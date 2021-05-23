@@ -64,18 +64,37 @@ main:
     mov     si, szIntroStage2
     call    PrintStrInt
 
+    mov     si, szLoadingKernel
+    call    PrintStrInt
+
+    ;
+    ; Read kernel into mem at 1MB (whilst we can't access from realmode, the disk controller will write it there no problem)
+    ; When we transition into protected mode later, we don't have access to BIOS interrupts, and too much effort to write 
+    ; a disk/floppy controller in x86 asm to read the kernel image from disk and map it in. So just do it now with BIOS INT!
+    ;
+    mov     ax, KERNEL_ADDR_ES                  ; ES:BX is the larger target memory location of disk sectors
+    mov     es, ax
+    mov     bx, KERNEL_ADDR_BX
+    mov     al, 8                               ; Read 8 sectors (4096 bytes)
+    mov     ch, 0                               ; Cylinder 0
+    mov     cl, 9                               ; Sector number 2 (0x200 to 0x400)
+    mov     dh, 0                               ; Head number 0
+    mov     dl, DRIVE                           ; Drive number (QEMU index)
+    call    DiskIntReadSectors
+
+
     ;mov     si, szSwitchToVga
     ;call    PrintStrInt    
     ;mov     bl, 9
     ;call    StartCountdown
 
-    ;mov     ax, 12
+    ;mov     ax, 0x10
     ;int     0x10                            ; Set VGA screen mode to 12 (VGA 640*480 16 color)
 
 
-;mov ah, 00h     ; tell the bios we'll be in graphics mode
-;mov al, 13h
-;int 10h         ; call the BIOS
+; mov ah, 00h     ; tell the bios we'll be in graphics mode
+; mov al, 13h
+; int 10h         ; call the BIOS
 ; mov ah, 0Ch     ; set video mode
 ; mov bh, 0       ; set output vga
 ; mov al, 3       ; set initial color
@@ -99,6 +118,7 @@ main:
 ; Strings
 ;
 szIntroStage2:                  db "Executing from Stage 2 Bootloader", 13, 10, 0
+szLoadingKernel:                db "Loading kernel into memory", 13, 10, 0
 szSwitchToVga:                  db "Switching to VGA 640x480 in .. ", 0
 
 
@@ -153,6 +173,6 @@ CODE_SEG equ gdtCode - gdtStart
 DATA_SEG equ gdtData - gdtStart
 
 ; End
-times 0x2048 - ($-$$) db 0  ; Pad our stage 2 bootloader to 2048 bytes, so we don't copy garbage data from disk
-dd 0x42424242               ; Our second stage bootloader magic value footer
+;times 0x2048 - ($-$$) db 0  ; Pad our stage 2 bootloader to 2048 bytes, so we don't copy garbage data from disk
+;dd 0x42424242               ; Our second stage bootloader magic value footer
 

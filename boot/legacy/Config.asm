@@ -8,8 +8,11 @@
 ;
 %define DRIVE                           0
 ;
-; Address Stage 2 should be loaded at, and maximum size to occupy in memory
+; Address the bootlodaer Stage 2 will be loaded at
 ; 
 %define BOOTLOADER_SECOND_STAGE_ADDR        0x7E00
-%define BOOTLOADER_SECOND_STAGE_MAX_SIZE    0x1000
 ;
+; Address the kernel will be loaded at 1000h:0000h (10000h)
+;
+%define KERNEL_ADDR_ES                      0x1000
+%define KERNEL_ADDR_BX                      0x0000

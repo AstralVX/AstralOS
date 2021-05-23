@@ -47,10 +47,19 @@ function BuildWithNasm($asmFileName, $outputPath)
     {
         Exit 1
     }
+
+    $size = (Get-ChildItem -file $outputPath).Length
+    Write-Host "Successfully built $outputPath [$size bytes]"
 }
 
 function WriteToFloppy($floppyData, $dataToWrite, $offset)
 {
+    if ($dataToWrite.GetType().Name -ne 'Byte[]')
+    {
+        Write-Host 'Not binary type'
+        exit 2
+    }
+
     $written = 0
     for ($i = 0; $i -lt $floppyData.Length; $i++)
     {
@@ -94,7 +103,6 @@ function CompileKernel($outputPath)
 
     #
     # Link - linking the opcodes from the .obj together to form the .exe
-    # https://docs.microsoft.com/en-us/cpp/build/reference/subsystem-specify-subsystem?view=msvc-160
     #
     $psi.FileName = $linkerPath 
     $psi.Arguments =    "/SAFESEH:NO " +                            # Don't produce table of exception handlers
@@ -123,6 +131,8 @@ function CompileKernel($outputPath)
         Exit 1
     }
 
+    $size = (Get-ChildItem -file $outputPath).Length
+    Write-Host "Successfully built $outputPath [$size bytes]"
 }
 
 # -------------------------------------------------------------------------------------
@@ -154,14 +164,17 @@ CompileKernel $kernelBinPath
 Write-Host 'Creating disk image'
 $floppyDiskSize = 1.44 * 1000 * 1024
 $floppyData = New-Object Byte[] $floppyDiskSize
+
 $bootloader1Bin = Get-Content $bootloader1BinPath -Encoding Byte -Raw
 $bootloader2Bin = Get-Content $bootloader2BinPath -Encoding Byte -Raw
+$kernelBin = Get-Content $kernelBinPath -Encoding Byte -Raw
 
 #
 # Floppy disk map
 #
-WriteToFloppy $floppyData $bootloader1Bin 0
-WriteToFloppy $floppyData $bootloader2Bin $SECTOR_SIZE
+WriteToFloppy $floppyData $bootloader1Bin   0
+WriteToFloppy $floppyData $bootloader2Bin   $SECTOR_SIZE
+WriteToFloppy $floppyData $kernelBin        ($SECTOR_SIZE*8)  # 0x1000
 
 $floppyStream = [System.IO.File]::OpenWrite($floppyDiskPath)
 $floppyStream.Write($floppyData, 0, $floppyData.Length)
@@ -180,14 +193,13 @@ $params += "-s "
 $proc = ''
 try
 {
-#$proc = Start-Process -FilePath "qemu-system-i386.exe" -NoNewWindow -Passthru -ArgumentList $params
-#Wait-Process $proc.Id
-    Get-ChildItem -File $kernelBinPath | Select-Object -Property Length  
+    $proc = Start-Process -FilePath "qemu-system-i386.exe" -NoNewWindow -Passthru -ArgumentList $params
+    Wait-Process $proc.Id    
 }
 finally
 {
     # Catch ctrl+c in powershell, then kill qemu
-#Stop-Process $proc -Force
+    Stop-Process $proc -Force
 }
 
 
