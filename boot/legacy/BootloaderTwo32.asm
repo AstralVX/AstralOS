@@ -1,10 +1,12 @@
 bits 32                     ; Now we're in 32 bit Protected Mode (so can't call BIOS interrupts anymore) with virtual addressing 
 
-global      vgaLine
+global  yText
+global  xText
+
+
 
 SECTION .data  
-    vgaLine:    dd  0xB     ; Used in Print32 VGA print, the initial offset Y row for text in protected mode
-
+    xyText:     dd  (0xB * 80 * 2)  ; Used in Print32 VGA print, the initial X/Y offset for text in protected mode
 
 
 SECTION .text
@@ -34,10 +36,7 @@ boot32:
     mov esi, szHelloFrom32b
     call PrintStrVgaTextMem
 
-    mov esi, szHelloFrom32b
-    call PrintStrVgaTextMem
-
-    mov esi, szHelloFrom32b
+    mov esi, szAaa
     call PrintStrVgaTextMem
 
     ;mov dword [0xb8000], 0x20692048
@@ -60,6 +59,17 @@ boot32:
     lea esi, [ebp - 8]
     call PrintStrVgaTextMem
 
+    lea esi, [ebp - 8]
+    call PrintStrVgaTextMem
+
+    mov esi, szHelloFrom32b
+    call PrintStrVgaTextMem
+
+    mov esi, szHelloFrom32b
+    call PrintStrVgaTextMem
+
+    mov esi, szHelloFrom32b
+    call PrintStrVgaTextMem
 
     cli
     hlt
@@ -69,6 +79,8 @@ boot32:
     ret
 
 ;
-; Consts (32 bit, video memory doesn't process control chars)
+; Consts used in protected mode.
+; New lines only supported at end of string, identified by 0xA.
 ;
-szHelloFrom32b: db "Transitioned to Protected Mode (32 bit)", 0
+szHelloFrom32b: db "Transitioned to Protected Mode (32 bit)", 0xA, 0
+szAaa: db "HELLO", 0
