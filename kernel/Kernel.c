@@ -43,7 +43,8 @@ void init_vga(uint8 fore_color, uint8 back_color)
 
 void _KernelEntry()
 {
-    char aaa[] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    //__asm { int 3}; 
+    //    return 0x41;
 
     //first init vga with fore & back colors
     init_vga(WHITE, BLACK);
@@ -61,4 +62,7 @@ void _KernelEntry()
     vga_buffer[8] = vga_entry('r', WHITE, BLACK);
     vga_buffer[9] = vga_entry('l', WHITE, BLACK);
     vga_buffer[10] = vga_entry('d', WHITE, BLACK);
+
+    __asm { cli }; 
+    __asm { hlt }; 
 }

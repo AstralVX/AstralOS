@@ -10,6 +10,7 @@
 ;   eax, ebx, ecx, edx
 ;
 PrintStrVgaTextMem:
+    pusha
     xor     edx, edx
     xor     ecx, ecx        ; Count to hold string size
     mov     ebx, [xyText]
@@ -54,6 +55,7 @@ PrintStrVgaTextMem:
     mov     [xyText], eax
 
 .end:
+    popa
     ret
 
 
