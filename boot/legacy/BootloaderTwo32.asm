@@ -7,9 +7,11 @@ SECTION .data
 
 
 
+SECTION .text
 
 GetKernelEntryPoint:
     ;pasre dos header here
+    mov     eax, [KERNEL_ADDR_32]
 
     ret
 
@@ -17,6 +19,11 @@ GetKernelEntryPoint:
 ; Jmp'ed to from BootloaderTwo16.asm when transition from RM to PE
 ;
 boot32:
+    push    ebp         ; Create stack frame
+    mov     ebp, esp
+    sub     esp, 0x9    ; Local stack varaibles
+                        ; [0 - 9]: char hexString[9], 8 bytes used for number, 1 for null
+
     mov ax, DATA_SEG    ; Set all segments to point to data segment
     mov ds, ax
     mov es, ax
@@ -25,13 +32,13 @@ boot32:
     mov ss, ax
 
     mov esi, szHelloFrom32b
-    call PrintToVgaTextMemory
+    call PrintStrVgaTextMem
 
     mov esi, szHelloFrom32b
-    call PrintToVgaTextMemory
+    call PrintStrVgaTextMem
 
     mov esi, szHelloFrom32b
-    call PrintToVgaTextMemory
+    call PrintStrVgaTextMem
 
     ;mov dword [0xb8000], 0x20692048
     
@@ -41,11 +48,25 @@ boot32:
 
     ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
 
-    call GetKernelEntryPoint
+    ;call GetKernelEntryPoint
+
+    
+;DEBUGBREAK
+
+    lea ecx, [ebp - 8]          ; &hexString
+    mov edx, 0xABCD1234
+    call DwordToHexstring
+
+    lea esi, [ebp - 8]
+    call PrintStrVgaTextMem
+
 
     cli
     hlt
 
+    mov     esp, ebp    ; Unwind stack frame
+    pop     ebp
+    ret
 
 ;
 ; Consts (32 bit, video memory doesn't process control chars)

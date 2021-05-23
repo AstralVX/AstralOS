@@ -339,3 +339,4 @@ ASALocalRun/
 
 Build/
 Boot/UefiBootloaderPkg/
+Boot/Debugger16/.gdb_history

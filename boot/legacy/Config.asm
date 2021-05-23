@@ -16,3 +16,12 @@
 ;
 %define KERNEL_ADDR_ES                      0x1000
 %define KERNEL_ADDR_BX                      0x0000
+%define KERNEL_ADDR_32                      0x10000
+
+;
+; Poor mans breakpoint - infinite loop, then requires manual debugger break in
+;   Jmp to the ($) current address of the instruction, same as jmp -2
+; To continue in GDB step over 2 instructions:
+;    set $eip += 2
+;
+%define DEBUGBREAK                          jmp $
