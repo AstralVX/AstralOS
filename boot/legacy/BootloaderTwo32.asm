@@ -8,7 +8,7 @@ SECTION .bss
     ; DOS image header
     ;
     STRUC IMAGE_DOS_HEADER
-        .e_magic      RESW 1   ; Magic number
+        .e_magic      RESW 1   ; Magic number 'MZ'
         .e_cblp       RESW 1   ; Bytes on last page of file
         .e_cp         RESW 1   ; Pages in file
         .e_crlc       RESW 1   ; Relocations
@@ -27,7 +27,9 @@ SECTION .bss
         .e_oeminfo    RESW 1   ; OEM information; e_oemid specific
         .e_res2       RESW 10  ; Reserved words
         .e_lfanew     RESD 1   ; File address of new exe header
+        alignb 4
     ENDSTRUC
+    %define SIZEOF_IMAGE_DOS_HEADER     64     
 
     ;
     ; Represents the optional header format.
@@ -65,7 +67,9 @@ SECTION .bss
         .LoaderFlags                    RESD 1 ; Obsolete.
         .NumberOfRvaAndSizes            RESD 1 ; The number of directory entries in the remainder of the optional header.
         .DataDirectory                  RESD 1 ; A pointer to the first IMAGE_DATA_DIRECTORY structure in the data directory.
+        alignb 4
     ENDSTRUC
+    %define SIZEOF_IMAGE_OPTIONAL_HEADER32     224
 
     ;
     ; Represents the COFF header format
@@ -78,13 +82,35 @@ SECTION .bss
         .NumberOfSymbols        RESD 1  ; Number of symbols in the symbol table
         .SizeOfOptionalHeader   RESW 1  ; Size of the optional header, in bytes
         .Characteristics        RESW 1  ; Characteristics of the image
+        alignb 4
     ENDSTRUC
+    %define SIZEOF_IMAGE_FILE_HEADER    20
 
     STRUC IMAGE_NT_HEADERS32
-        .Signature      RESD 1      ;
-        .FileHeader     RESB 20     ; IMAGE_FILE_HEADER
-        .OptionalHeader RESB 224    ; IMAGE_OPTIONAL_HEADER32
+        .Signature      RESD 1                                  ; NT header 'PE'
+        .FileHeader     RESB SIZEOF_IMAGE_FILE_HEADER           ; IMAGE_FILE_HEADER
+        .OptionalHeader RESB SIZEOF_IMAGE_OPTIONAL_HEADER32     ; IMAGE_OPTIONAL_HEADER32
+        alignb 4
     ENDSTRUC
+    %define SIZEOF_IMAGE_NT_HEADERS32   248
+
+    ;
+    ; Section headers of e.g. .text, .data, .rdata, etc
+    ;
+    STRUC IMAGE_SECTION_HEADER
+        .Name                   RESB 8  ; An 8-byte, UTF-8 string. There is no terminating null character if the string is eight characters long
+        .VirtualSize            RESD 1  ; Total size of the section when loaded into memory, in bytes
+        .VirtualAddress         RESD 1  ; Address of the first byte of the section when loaded into memory, relative to the image base.
+        .SizeOfRawData          RESD 1  ; Size of the initialized data on disk, in bytes. 
+        .PointerToRawData       RESD 1  ; File pointer to the first page within the COFF file.
+        .PointerToRelocations   RESD 1  ; File pointer to the beginning of the relocation entries for the section. 
+        .PointerToLinenumbers   RESD 1  ; File pointer to the beginning of the line-number entries for the section
+        .NumberOfRelocations    RESW 1  ; Number of relocation entries for the section
+        .NumberOfLinenumbers    RESW 1  ; Number of line-number entries for the section.
+        .Characteristics        RESD 1  ; Characteristics of the image (execute, r/w, initalized data, uninit data, etc)
+        alignb 4
+    ENDSTRUC
+    %define SIZEOF_IMAGE_SECTION_HEADER 40
 
 SECTION .data  
     xyText:     dd  (0xB * 80 * 2)  ; Used in Print32 VGA print, the initial X/Y offset 0xB for text in protected mode
@@ -92,40 +118,89 @@ SECTION .data
 
 SECTION .text
 
-GetKernelEntryPoint:
+ParseKernelImage:
     push    ebp                     ; Create stack frame
     mov     ebp, esp            
-    sub     esp, 0x9                ; Local stack varaibles
-                                    ; [0 - 9]: char hexString[9], 8 bytes used for number, 1 for null
+    sub     esp, 0x18               ; Local stack variables
+                                    ; [00 - 08]: [ebp-04h]: CHAR   hexString[9]     // 8 bytes used for number, 1 for null
+                                    ; [09 - 0B]:            UINT8  padding[3]
+                                    ; [0C - 0F]: [ebp-10h]: UINT32 idxSection       // current index of section headers parsed
+                                    ; [10 - 13]: [ebp-14h]: UINT32 cTotalSections   // total sections
+                                    ; [14 - 17]: [ebp-18h]: UINT32 ImageBase        // kernel base address
 
+    ; Parse the DOS header for the offset to the NT header
     mov     eax, [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_magic]
     cmp     ax, 0x5a4d              ; 'MZ'
     jnz     .end  
     lea     esi, szVerifiedKernelDos
     call    PrintStrVgaTextMem
 
-    lea     eax, [KERNEL_ADDR_32]
-    add     eax, [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_lfanew]
+    ; Parse the NT header
+    lea     eax, dword [KERNEL_ADDR_32]
+    add     eax, dword [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_lfanew]
     mov     ebx, dword [eax + IMAGE_NT_HEADERS32.Signature]
     cmp     bx, 0x4550              ; 'PE'
     jnz     .end  
     lea     esi, szVerifiedKernelNt
     call    PrintStrVgaTextMem
 
-    lea     eax, dword [eax + IMAGE_NT_HEADERS32.OptionalHeader]
-    mov     ebx, dword [eax + IMAGE_OPTIONAL_HEADER32.Magic]
-    cmp     bx, 0x010B              ; IMAGE_NT_OPTIONAL_HDR32_MAGIC 0x010B
-    jnz     .end  
+    ; Parse the file header
+    lea     edx, dword [eax + IMAGE_NT_HEADERS32.FileHeader]
+    movzx   ebx, word [edx + IMAGE_FILE_HEADER.NumberOfSections]    ; Mov the 16 bit val and zero extend tops bits
+    mov     dword [ebp-0x14], ebx                                   ; Move NumberOfSections into ebp-0x14
+
+    ; Parse the Optional header
+    lea     edx, dword [eax + IMAGE_NT_HEADERS32.OptionalHeader]
+    mov     ebx, dword [edx + IMAGE_OPTIONAL_HEADER32.Magic]
+    cmp     bx, 0x010B                                              ; IMAGE_NT_OPTIONAL_HDR32_MAGIC 0x010B
+    jnz     .end
+    mov     ebx, dword [edx + IMAGE_OPTIONAL_HEADER32.ImageBase]
+    mov     dword [ebp-0x18], ebx                                   ; Move preferred ImageBase (e.g. 0x10000) into ebp-0x18    
     lea     esi, szVerifiedKernel32bImage
     call    PrintStrVgaTextMem
 
-    mov     ebx, dword [eax + IMAGE_OPTIONAL_HEADER32.AddressOfEntryPoint]
+    ;mov     ebx, dword [eax + IMAGE_OPTIONAL_HEADER32.AddressOfEntryPoint]
 
-lea     ebx, [KERNEL_ADDR_32]
-mov     ebx, 0x104F0
+    ; Parse the Sections header
+    lea     eax, [KERNEL_ADDR_32]
+    add     eax, [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_lfanew]       ; Go to offset to NT header
+    add     eax, SIZEOF_IMAGE_NT_HEADERS32                          ; Add NT header size
+    mov     dword [ebp-0x10], 0                                     ; Set idxSection to 0
+    
+    ; Copy raw section from image into relevant VA
+    .sectionLoop:
+    mov     esi, KERNEL_ADDR_32                                     ; Move file pointer of kernel to source
+    add     esi, dword [eax + IMAGE_SECTION_HEADER.PointerToRawData]; Get Section Header point to raw data
+    mov     edi, [ebp-0x18]                                         ; Move ImageBase (e.g. 0x10000) into dest
+    add     edi, dword [eax + IMAGE_SECTION_HEADER.VirtualAddress]  ; Add Section's VirtualAddress offset to the preferred ImageBase
+    mov     ecx, dword [eax + IMAGE_SECTION_HEADER.SizeOfRawData]   ; Move Section size in bytes into ecx
+    shr     ecx, 2                                                  ; Divide by 4
+    rep     movsd                                                   ; High perf copy of ecx*dwords from edi into esi
+
+    lea     esi, szCopyingSection                                   ; Verbose print of section name e.g. ".text"
+    call    PrintStrVgaTextMem
+    lea     esi, dword [eax + IMAGE_SECTION_HEADER.Name]
+    call    PrintStrVgaTextMem
+    lea     esi, szNewLine
+    call    PrintStrVgaTextMem
+
+    add     eax, SIZEOF_IMAGE_SECTION_HEADER                        ; Move eax originally pointer to SectionHeader[0] to next
+    inc     dword [ebp-0x10]                                        ; idxSection++
+    mov     ecx, dword [ebp-0x10]
+    cmp     ecx, dword [ebp-0x14]                                   ; if idxSection < cTotalSections
+    jb      .sectionLoop                                            ; jmp if below
+    
+
+    DEBUGBREAK
+
+;lea     ebx, [KERNEL_ADDR_32]
+;mov     ebx, 0x104F0
 ;DEBUGBREAK
-jmp     ebx
+;jmp     ebx
 
+;todo parse sectionheaders, map .text and .rdata to baseaddr+virtual addr, then copy raw addr/size into it, them jmp to that!
+;stackoverflow page aglo
+;msdn page for iamge_section_header/data
 
     ; lea     ecx, [ebp - 8]          ; &hexString
     ; mov     edx, eax
@@ -164,8 +239,8 @@ boot32:
 ;mov [edi],al
 
     ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
-
-    call GetKernelEntryPoint
+;DEBUGBREAK
+    call ParseKernelImage
 
 
 
@@ -191,5 +266,6 @@ szHelloFrom32b:                         db "Transitioned to Protected Mode", 0xA
 szVerifiedKernelDos                     db "Verified kernel DOS header 'MZ' 0x5A4D", 0xA, 0
 szVerifiedKernelNt                      db "Verified kernel NT header  'PE' 0x4550", 0xA, 0
 szVerifiedKernel32bImage                db "Verified kernel 32b image       0x010B", 0xA, 0
+szCopyingSection                        db "Copying section: ", 0
 szAaa:                                  db "HELLO", 0
 szNewLine:                              db 0xA, 0

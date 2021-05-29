@@ -7,7 +7,7 @@
 ;   esi = text string
 ;
 ; Clobbers:
-;   eax, ebx, ecx, edx
+;   
 ;
 PrintStrVgaTextMem:
     pusha
