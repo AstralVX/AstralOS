@@ -118,24 +118,36 @@ SECTION .data
 
 SECTION .text
 
-ParseKernelImage:
+;
+; Map the kernel file into virtual memory by parsing the PE format and mapping the Sections into there designated
+; virtual addresses
+;
+; Returns:
+;   Virtual address of kernel entry point
+;
+MapKernelImage:
     push    ebp                     ; Create stack frame
     mov     ebp, esp            
-    sub     esp, 0x18               ; Local stack variables
+    sub     esp, 0x1C               ; Local stack variables
                                     ; [00 - 08]: [ebp-04h]: CHAR   hexString[9]     // 8 bytes used for number, 1 for null
                                     ; [09 - 0B]:            UINT8  padding[3]
                                     ; [0C - 0F]: [ebp-10h]: UINT32 idxSection       // current index of section headers parsed
                                     ; [10 - 13]: [ebp-14h]: UINT32 cTotalSections   // total sections
                                     ; [14 - 17]: [ebp-18h]: UINT32 ImageBase        // kernel base address
+                                    ; [18 - 1B]: [ebp-1Ch]: UINT32 AddrOfEntryPoint // RVA offset to entry point
 
+    ;
     ; Parse the DOS header for the offset to the NT header
+    ;
     mov     eax, [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_magic]
     cmp     ax, 0x5a4d              ; 'MZ'
     jnz     .end  
     lea     esi, szVerifiedKernelDos
     call    PrintStrVgaTextMem
 
+    ;
     ; Parse the NT header
+    ;
     lea     eax, dword [KERNEL_ADDR_32]
     add     eax, dword [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_lfanew]
     mov     ebx, dword [eax + IMAGE_NT_HEADERS32.Signature]
@@ -144,30 +156,38 @@ ParseKernelImage:
     lea     esi, szVerifiedKernelNt
     call    PrintStrVgaTextMem
 
+    ;
     ; Parse the file header
+    ;
     lea     edx, dword [eax + IMAGE_NT_HEADERS32.FileHeader]
     movzx   ebx, word [edx + IMAGE_FILE_HEADER.NumberOfSections]    ; Mov the 16 bit val and zero extend tops bits
     mov     dword [ebp-0x14], ebx                                   ; Move NumberOfSections into ebp-0x14
 
+    ;
     ; Parse the Optional header
+    ;
     lea     edx, dword [eax + IMAGE_NT_HEADERS32.OptionalHeader]
     mov     ebx, dword [edx + IMAGE_OPTIONAL_HEADER32.Magic]
     cmp     bx, 0x010B                                              ; IMAGE_NT_OPTIONAL_HDR32_MAGIC 0x010B
     jnz     .end
     mov     ebx, dword [edx + IMAGE_OPTIONAL_HEADER32.ImageBase]
-    mov     dword [ebp-0x18], ebx                                   ; Move preferred ImageBase (e.g. 0x10000) into ebp-0x18    
+    mov     dword [ebp-0x18], ebx                                   ; Copy preferred ImageBase (e.g. 0x10000) into ebp-0x18    
+    mov     ebx, dword [edx + IMAGE_OPTIONAL_HEADER32.AddressOfEntryPoint]
+    mov     dword [ebp-0x1C], ebx                                   ; Copy RVA offset of code entry point into ebp-0x1C
     lea     esi, szVerifiedKernel32bImage
     call    PrintStrVgaTextMem
 
-    ;mov     ebx, dword [eax + IMAGE_OPTIONAL_HEADER32.AddressOfEntryPoint]
-
+    ;
     ; Parse the Sections header
+    ;
     lea     eax, [KERNEL_ADDR_32]
     add     eax, [KERNEL_ADDR_32 + IMAGE_DOS_HEADER.e_lfanew]       ; Go to offset to NT header
     add     eax, SIZEOF_IMAGE_NT_HEADERS32                          ; Add NT header size
     mov     dword [ebp-0x10], 0                                     ; Set idxSection to 0
     
-    ; Copy raw section from image into relevant VA
+    ;
+    ; Copy raw sections from file pointer into calculated virtual addresses
+    ;
     .sectionLoop:
     mov     esi, KERNEL_ADDR_32                                     ; Move file pointer of kernel to source
     add     esi, dword [eax + IMAGE_SECTION_HEADER.PointerToRawData]; Get Section Header point to raw data
@@ -189,24 +209,27 @@ ParseKernelImage:
     mov     ecx, dword [ebp-0x10]
     cmp     ecx, dword [ebp-0x14]                                   ; if idxSection < cTotalSections
     jb      .sectionLoop                                            ; jmp if below
-    
+        
+    lea     esi, szKernelBaseVa                                     ; Print kernel base VA
+    call    PrintStrVgaTextMem
+    mov     eax, dword [ebp-0x18]                                   ; ImageBase VA 
+    lea     ecx, [ebp - 8]                                          ; &hexString
+    mov     edx, eax
+    call    DwordToHexstring    
+    lea     esi, [ebp - 8]
+    call    PrintStrVgaTextMem
 
-    DEBUGBREAK
-
-;lea     ebx, [KERNEL_ADDR_32]
-;mov     ebx, 0x104F0
-;DEBUGBREAK
-;jmp     ebx
-
-;todo parse sectionheaders, map .text and .rdata to baseaddr+virtual addr, then copy raw addr/size into it, them jmp to that!
-;stackoverflow page aglo
-;msdn page for iamge_section_header/data
-
-    ; lea     ecx, [ebp - 8]          ; &hexString
-    ; mov     edx, eax
-    ; call    DwordToHexstring    
-    ; lea     esi, [ebp - 8]
-    ; call    PrintStrVgaTextMem
+    lea     esi, szKernelEpVa                                       ; Print kernel entry point VA
+    call    PrintStrVgaTextMem
+    mov     eax, dword [ebp-0x18]                                   ; ImageBase VA 
+    add     eax, dword [ebp-0x1C]                                   ; RVA of entry point    
+    lea     ecx, [ebp - 8]                                          ; &hexString
+    mov     edx, eax
+    call    DwordToHexstring    
+    lea     esi, [ebp - 8]
+    call    PrintStrVgaTextMem
+    lea     esi, szNewLine
+    call    PrintStrVgaTextMem
 
 .end:
     mov     esp, ebp                ; Unwind stack frame
@@ -239,17 +262,12 @@ boot32:
 ;mov [edi],al
 
     ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
-;DEBUGBREAK
-    call ParseKernelImage
+    call MapKernelImage
 
 
+DEBUGBREAK
+    call eax
 
-    mov esi, szAaa
-    call PrintStrVgaTextMem
-
-    
-    mov esi, szHelloFrom32b
-    call PrintStrVgaTextMem
 
     cli
     hlt
@@ -262,10 +280,11 @@ boot32:
 ; Consts used in protected mode.
 ; New lines only supported at end of string, identified by 0xA.
 ;
-szHelloFrom32b:                         db "Transitioned to Protected Mode", 0xA, 0
+szHelloFrom32b                          db "Transitioned to Protected Mode", 0xA, 0
 szVerifiedKernelDos                     db "Verified kernel DOS header 'MZ' 0x5A4D", 0xA, 0
 szVerifiedKernelNt                      db "Verified kernel NT header  'PE' 0x4550", 0xA, 0
 szVerifiedKernel32bImage                db "Verified kernel 32b image       0x010B", 0xA, 0
 szCopyingSection                        db "Copying section: ", 0
-szAaa:                                  db "HELLO", 0
-szNewLine:                              db 0xA, 0
+szKernelBaseVa                          db "Kernel has been loaded at: ", 0
+szKernelEpVa                            db ". Entry point: ", 0
+szNewLine                               db 0xA, 0
