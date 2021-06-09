@@ -190,6 +190,8 @@ $params += "-drive format=raw,index=0,if=floppy,file=$floppyDiskPath "
 # Enable debugging, break at POST with '-S'
 $params += "-s "
 
+$params += "-vga std "
+
 $proc = ''
 try
 {

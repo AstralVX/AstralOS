@@ -86,10 +86,10 @@ PrintStrColourInt:
 ;   bx: the ascii number
 ;
 ; Clobbers:
-;   al, cx, bx
+;   none
 ;
 PrintHex:
-    pusha
+    pushad
     mov cx, 4
 .Loop:
     mov al, bh
@@ -106,7 +106,7 @@ PrintHex:
 
     shl bx, 4
     loop .Loop
-    popa
+    popad
     ret
 
 ;

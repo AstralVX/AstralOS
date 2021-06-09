@@ -8,11 +8,183 @@ bits 16
 ; Tell NASM to output all our labels with offset 0x7E00
 org BOOTLOADER_SECOND_STAGE_ADDR
 
-jmp main
+SECTION .bss
+    STRUC VBE_INFO_STRUCTURE
+        .signature      RESB 4      ; must be "VESA" to indicate valid VBE support
+        .version        RESW 1      ; VBE version  high byte is major version, low byte is minor version
+        .oem            RESD 1      ; segment:offset pointer to OEM
+        .capabilities   RESD 1      ; bitfield that describes card capabilities
+        .video_modes    RESD 1      ; segment:offset pointer to list of supported video modes (+18h)
+        .video_memory   RESW 1      ; amount of video memory in 64KB blocks
+        .software_rev   RESW 1      ; software revision
+        .vendor         RESD 1      ; segment:offset to card vendor string
+        .product_name   RESD 1      ; segment:offset to card model name
+        .product_rev    RESD 1      ; segment:offset pointer to product revision
+        .reserved       RESB 222    ; reserved for future expansion
+        .oem_data       RESB 256    ; OEM BIOSes store their strings in this area
+        alignb 4
+    ENDSTRUC
 
+    STRUC VBE_MODE_INFO_STRUCTURE
+        .attributes                RESW 1   ; deprecated, only bit 7 should be of interest to you, and it indicates the mode supports a linear frame buffer.
+        .window_a                  RESB 1   ; deprecated
+        .window_b                  RESB 1   ; deprecated
+        .granularity               RESW 1   ; deprecated used while calculating bank numbers
+        .window_size               RESW 1
+        .segment_a                 RESW 1
+        .segment_b                 RESW 1
+        .win_func_ptr              RESD 1   ; deprecated used to switch banks from protected mode without returning to real mode
+        .pitch                     RESW 1   ; number of bytes per horizontal line
+        .width                     RESW 1   ; width in pixels
+        .height                    RESW 1   ; height in pixels
+        .w_char                    RESB 1   ; unused...
+        .y_char                    RESB 1   ; ...
+        .planes                    RESB 1
+        .bpp                       RESB 1   ; bits per pixel in this mode
+        .banks                     RESB 1   ; deprecated total number of banks in this mode
+        .memory_model              RESB 1
+        .bank_size                 RESB 1   ; deprecated size of a bank, almost always 64 KB but may be 16 KB...
+        .image_pages               RESB 1
+        .reserved0                 RESB 1
+
+        .red_mask                  RESB 1
+        .red_position              RESB 1
+        .green_mask                RESB 1
+        .green_position            RESB 1
+        .blue_mask                 RESB 1
+        .blue_position             RESB 1
+        .reserved_mask             RESB 1
+        .reserved_position         RESB 1
+        .direct_color_attributes   RESB 1      
+
+        .framebuffer               RESD 1    ; phys addr of the linear frame buffer write here to draw to the screen
+        .off_screen_mem_off        RESD 1
+        .off_screen_mem_size       RESW 1    ; size of memory in the framebuffer but not being displayed on the screen
+        .reserved1                 RESB 206
+        alignb 1
+    ENDSTRUC
+    %define SIZEOF_VBE_MODE_INFO_STRUCTURE 256
+
+SECTION .text
+
+jmp main
 
 ; Start
 ;dd 0x41414141               ; Our second stage bootloader magic header
+
+
+SetGraphicsToVesa:    
+    push    bp                      ; Create stack frame
+    mov     bp, sp            
+    sub     sp, 0x306               ; Local stack variables
+                                    ; [000h - 1FFh]: [bp-04h]:  UCHAR   vbeInfoStruct[512]
+                                    ; [200h - 201h]: [bp-202h]: UINT16  videoModeOffset
+                                    ; [202h - 203h]: [bp-204h]: UINT16  videoModeSegment
+                                    ; [204h - 205h]: [bp-206h]: UINT16  videoMode                       // The video mode itself e.g. 0x115
+                                    ; [206h - 305h]: [bp-306h]: VBE_MODE_INFO_STRUCTURE vbeModeInfo     // Sizeof 256
+
+    mov     ax, 0x4F00              ; Get VBE BIOS info
+    lea     bx, word [bp-04h]       ; vbeInfoStruct
+
+    mov     di, bx
+    mov     word[es:di + VBE_INFO_STRUCTURE.signature],     'VB'        ; On input vbeInfoStruct.Signature must be 'VBE2'
+    mov     word[es:di + VBE_INFO_STRUCTURE.signature + 2], 'E2'
+    int     0x10                    ; Video services
+
+    cmp     ax, 0x004F				; Verify BIOS support VBE, as it should respond with 004F if so
+    jz      .validateSignatureResponse
+    mov     si, szErrVbeSupport
+    jmp     .error
+    
+.validateSignatureResponse:
+    mov     si, szErrVesaSig
+    mov     ax, [es:di + VBE_INFO_STRUCTURE.signature]  ; Verify the BIOS responsed with 'VESA' in the Signature
+    cmp     ax, 'VE'
+
+    jnz     .error
+    mov     ax, [es:di + 2 + VBE_INFO_STRUCTURE.signature]  
+    cmp     ax, 'SA'
+    jnz     .error
+
+; Get list of video modes from segment:offset pointer
+.loadVideoModes:
+    mov     si, szFoundVidModes
+    call    PrintStrInt
+
+    mov     ax, [es:di + VBE_INFO_STRUCTURE.video_modes]        ; videoModeOffset
+    mov     word [bp - 202h], ax
+    mov     ax, [es:di + VBE_INFO_STRUCTURE.video_modes + 2]    ; videoModeSegment
+    mov     word [bp - 204h], ax    
+
+; Following subroutine has VideoMode segment:offset at [fs:si]
+.findNextMode:
+    mov     ax, word [bp - 202h]        ; videoModeOffset
+    mov     si, ax
+    mov     fs, word [bp - 204h]        ; videoModeSegment
+
+    mov     dx, word [fs:si]    
+    add     si, 2
+    mov     word [bp - 202h], si        ; videoModeOffset += 2
+    mov     word [bp - 206h], dx        ; Save mode found
+
+    cmp     dx, 0xFFFF
+    jz      .errLastVidMode
+
+    mov     bx, dx                      ; Debug print
+    call    PrintHex                    ; Debug print
+    mov     si, szComma                 ; Debug print
+    call    PrintStrInt                 ; Debug print
+
+    mov     ax, 0x4F01				    ; Get VBE mode info
+    mov     cx, word [bp - 206h]        ; Video Mode
+    lea     di, word [bp - 306h]        ; &vbeModeInfo
+    int     0x10                        ; Load mode infos at VBE_MODE_INFO_LABELS
+
+    cmp     ax, 0x004F
+    mov     si, szErr10_4F01
+    jnz     .error                       ; Check for success code in AX
+
+    cmp word [bp - 206h], 0x115      ; Check Video Mode for 800x600x24
+    jnz .findNextMode                ; Stop abritrarily at mode 0x115
+
+
+
+; .findMode:
+; 	mov     dx, [fs:si]
+; 	add     si, 2
+; 	mov     word [bp - 204h], si        ; Increment segment
+; 	mov     word [bp - 206h], dx
+; 	mov     ax, 0
+; 	mov     fs, ax
+
+; 	cmp     word [bp - 206h], 0xFFFF    ; End of list?
+; 	jz      .error
+
+; 	push    es
+; 	mov     ax, 0x4F01				    ; Get VBE mode info
+; 	mov     cx, word [bp - 206h]        ; Mode
+; 	lea     di, word [bp - 306h]        ; &vbeModeInfo
+;     DEBUGBREAK
+; 	int     0x10
+; 	pop     es
+
+
+.foundMode:
+    nop
+
+
+    jmp     .end
+
+.errLastVidMode:
+    mov     si, szErrVideoModeNotFound
+    call    .error    
+.error:
+    call    PrintStrInt
+.end:
+    DEBUGBREAK
+    mov     sp, bp                  ; Unwind stack frame
+    pop     bp
+    ret
 
 ;
 ; Print a countdown string (e.g. 543210) with a delay after every print
@@ -102,6 +274,7 @@ main:
 ; mov dx, 100       ; y = 0
 ; int 10h         ; BIOS interrupt
 
+    call    SetGraphicsToVesa
 
     call    Init32b
 
@@ -120,7 +293,12 @@ main:
 szIntroStage2:                  db "Executing from Stage 2 Bootloader", 13, 10, 0
 szLoadingKernel:                db "Loading kernel into memory", 13, 10, 0
 szSwitchToVga:                  db "Switching to VGA 640x480 in .. ", 0
-
+szErrVbeSupport:                db "Err - BIOS doesn't support VBE", 13, 10
+szErrVesaSig:                   db "Err - VESA signature failed", 13, 10
+szErr10_4F01:                   db "Err - INT 10h, 4F01h failed", 13, 10
+szErrVideoModeNotFound:         db "Err - searched all VideoModes and couldn't find target", 13, 10
+szComma:                        db ", ", 0
+szFoundVidModes:                db "Found VideoModes: ", 0
 
 ;
 ; GDT

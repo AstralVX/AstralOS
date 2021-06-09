@@ -118,6 +118,8 @@ SECTION .data
 
 SECTION .text
 
+
+
 ;
 ; Map the kernel file into virtual memory by parsing the PE format and mapping the Sections into there designated
 ; virtual addresses
@@ -242,8 +244,8 @@ MapKernelImage:
 boot32:
     push    ebp         ; Create stack frame
     mov     ebp, esp
-    sub     esp, 0x9    ; Local stack varaibles
-                        ; [0 - 9]: char hexString[9], 8 bytes used for number, 1 for null
+    sub     esp, 0x4    ; Local stack varaibles
+                        ; [00 - 03]: [ebp-04h]: PVOID   pKernelEp       // Entry point of kernel code
 
     mov ax, DATA_SEG    ; Set all segments to point to data segment
     mov ds, ax
@@ -252,21 +254,21 @@ boot32:
     mov gs, ax
     mov ss, ax
 
-    mov esi, szHelloFrom32b
-    call PrintStrVgaTextMem
+    mov     esi, szHelloFrom32b
+    call    PrintStrVgaTextMem
 
-    ;mov dword [0xb8000], 0x20692048
-    
+    ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
+    call    MapKernelImage
+    mov     dword [ebp-0x04], eax
+
 ;mov edi,0x0A0000
 ;mov al,0x02      ; the color of the pixel
 ;mov [edi],al
-
-    ; load kernel, if some code runs, change vid mode to vga and do gfx work from C
-    call MapKernelImage
-
+    ; print loading circle, then transition to another gfx mode, and show same loading circle
 
 DEBUGBREAK
-    call eax
+    mov     eax, dword [ebp-0x04]
+    call    eax
 
 
     cli
