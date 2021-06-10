@@ -59,6 +59,7 @@ PrintStrInt:
     popa
     ret
 
+
 ;
 ; General print string interrupt function
 ;
@@ -79,8 +80,9 @@ PrintStrColourInt:
 .end:
     ret
 
+
 ;
-; Print a 16 bit number in hex and gets zero padded e.g. 00F0
+; Print a 16 bit number in hex and gets zero padded e.g. 00F0h
 ;
 ; Args
 ;   bx: the ascii number
@@ -106,8 +108,13 @@ PrintHex:
 
     shl bx, 4
     loop .Loop
+
+    mov al, 'h'
+    int 0x10
+
     popad
     ret
+
 
 ;
 ; Print a single character 

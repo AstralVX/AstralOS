@@ -8,6 +8,13 @@ bits 16
 ; Tell NASM to output all our labels with offset 0x7E00
 org BOOTLOADER_SECOND_STAGE_ADDR
 
+; Data section that holds initialized data, i.e. global vars
+SECTION .data
+    g_linearFrameBuffer:    dd 0
+    g_width:                dd 0
+    g_height:               dd 0
+
+; Unitialized global variables that doesn't occupy disk space
 SECTION .bss
     STRUC VBE_INFO_STRUCTURE
         .signature      RESB 4      ; must be "VESA" to indicate valid VBE support
@@ -65,6 +72,7 @@ SECTION .bss
     ENDSTRUC
     %define SIZEOF_VBE_MODE_INFO_STRUCTURE 256
 
+; Code section
 SECTION .text
 
 jmp main
@@ -90,7 +98,7 @@ jmp main
 SetGraphicsToVesa:    
     push    bp                          ; Create stack frame
     mov     ax, ss                      ; Video interrupts in this subroutine heavily uses segment 'ES' ES:DI for pointers, so temporairly
-    mov     es, ax                      ; set ES to our Stack Segment (SS) at 0x6000
+    mov     es, ax                      ; set ES to our Stack Segment (SS) at 0x6000, so our SS:BP from `sub sp, ..` matches ES
     mov     bp, sp              
     sub     sp, 0x306                   ; Local stack variables
                                         ; [000h - 1FFh]: [bp-04h]:  UCHAR   vbeInfoStruct[512]
@@ -123,8 +131,8 @@ SetGraphicsToVesa:
 
 ; Get list of video modes from segment:offset pointer
 .loadVideoModes:
-    mov     si, szFoundVidModes
-    call    PrintStrInt
+    ;mov     si, szFoundVidModes        ; Debug print
+    ;call    PrintStrInt                ; Debug print
 
     mov     ax, [es:di + VBE_INFO_STRUCTURE.video_modes]        ; videoModeOffset
     mov     word [bp - 202h], ax
@@ -146,12 +154,12 @@ SetGraphicsToVesa:
     mov     si, szErrVideoModeNotFound
     jz      .errLastVidMode
 
-    mov     bx, dx                      ; Debug print
-    call    PrintHex                    ; Debug print
-    mov     si, szComma                 ; Debug print
-    call    PrintStrInt                 ; Debug print
+    ;mov     bx, dx                      ; Debug print
+    ;call    PrintHex                    ; Debug print
+    ;mov     si, szComma                 ; Debug print
+    ;call    PrintStrInt                 ; Debug print
 
-    mov     ax, 0x4F01				    ; Get VBE mode info
+    mov     ax, 0x4F01				    ; Function - Get VBE mode info
     mov     cx, word [bp - 206h]        ; Video Mode
     lea     di, word [bp - 306h]        ; &vbeModeInfo    
     int     0x10                        ; Load mode infos at VBE_MODE_INFO_LABELS
@@ -160,7 +168,7 @@ SetGraphicsToVesa:
     mov     si, szErr10_4F01
     jnz     .error                       ; Check for success code in AX
 
-    ; Cmp modes found with desired width/height/bpp
+    ; Compare modes found with desired width/height/bpp
     mov     bx, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.width]
     cmp     bx, word [ss:bp + 0x4]         ; Arg width    
     jnz     .findNextMode
@@ -173,13 +181,50 @@ SetGraphicsToVesa:
     cmp     bl, byte [ss:bp + 0x8]         ; Arg bits per pixel
     jnz     .findNextMode
 
+    ; Copy linear frame buffer/width/height into global vars to be used in 32-bit Protected Mode
+    mov     ax, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.framebuffer]
+    mov     [g_linearFrameBuffer], ax
+    mov     ax, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.framebuffer + 2]
+    mov     [g_linearFrameBuffer + 2], ax
+    mov     ax, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.width]
+    mov     [g_width], ax
+    mov     ax, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.height]
+    mov     [g_height], ax
 
+    ; Print found mode
+    mov     si, szVideoModeFound
+    call    PrintStrInt
+    mov     bx, word [bp - 206h]
+    call    PrintHex
+    mov     si, szComma
+    call    PrintStrInt
+    mov     si, sz800x600x32
+    call    PrintStrInt
+    mov     si, szLfb
+    call    PrintStrInt
+    mov     bx, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.framebuffer+2]
+    call    PrintHex
+    mov     bx, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.framebuffer]
+    call    PrintHex
+    mov     si, szNewLineCarriageRet
+    call    PrintStrInt
 
+    mov     si, szSwitchToVesa
+    call    PrintStrInt
+    mov     bl, 3
+    call    StartCountdown
 
-.foundMode:
-    nop
+    ; Set video mode
+    mov     ax, 0x4F02                      ; Function - Set VBE mode
+    mov     bx, word [bp - 206h]            ; Bits 0 - 13 are the VideoMode
+    or      bx, 0x4000                      ; Enable linear frame buffer, by setting bit 14
+    int     0x10                            ; Interrupt - Video services
 
+	cmp     ax, 0x004F
+    mov     si, szErrSetVbeMode
+	jnz     .error
 
+    clc
     jmp     .end
 
 .errLastVidMode:
@@ -188,7 +233,7 @@ SetGraphicsToVesa:
 .error:
     call    PrintStrInt
 .end:
-    DEBUGBREAK
+    ;DEBUGBREAK
     mov     sp, bp                  ; Unwind stack frame
     pop     bp
     ret     6                       ; Return and increase SP by 3 word args we pushed onto the stack
@@ -216,6 +261,8 @@ StartCountdown:
     add     al, bl
     dec     al
     mov     ah, 0xe
+    int     0x10
+    mov     al, ' '
     int     0x10
 
     dec     bl          ; Counter from caller stored in BL
@@ -299,19 +346,24 @@ main:
 %include "Disk16.asm"
 %include "BootloaderTwo32.asm"
 %include "Print32.asm"
+%include "video32.asm"
 
 ;
 ; Strings
 ;
 szIntroStage2:                  db "Executing from Stage 2 Bootloader", 13, 10, 0
 szLoadingKernel:                db "Loading kernel into memory", 13, 10, 0
-szSwitchToVga:                  db "Switching to VGA 640x480 in .. ", 0
 szErrVbeSupport:                db "Err - BIOS doesn't support VBE", 13, 10, 0
 szErrVesaSig:                   db "Err - VESA signature failed", 13, 10, 0
 szErr10_4F01:                   db "Err - INT 10h, 4F01h failed", 13, 10, 0
 szErrVideoModeNotFound:         db 13, 10, "Err - searched all VideoModes and couldn't find target", 13, 10, 0
+szVideoModeFound:               db "Found ideal VideoMode ", 0
+sz800x600x32:                   db "800 x 600 x 32. ", 13, 10, 0
+szLfb:                          db "Linear Frame Buffer at DWORD: ", 0
 szComma:                        db ", ", 0
 szFoundVidModes:                db "Found VideoModes: ", 0
+szSwitchToVesa:                 db "Switching to VESA video mode in .. ", 0
+szErrSetVbeMode:                db "Err - INT 10h, 4F02h failed", 13, 10, 0
 
 ;
 ; GDT

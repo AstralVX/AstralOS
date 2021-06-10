@@ -14,7 +14,8 @@ PrintStrVgaTextMem:
     xor     edx, edx
     xor     ecx, ecx        ; Count to hold string size
     mov     ebx, [xyText]
-    add     ebx, 0xb8000    ; VGA text memory mapped address 0xB8000 (usable even in VGA 640x480 mode)
+    ;add     ebx, 0xb8000    ; VGA text memory mapped address 0xB8000 (usable even in VGA 640x480 mode)
+    add     ebx, 0xfd000000
 .loop:
     lodsb                   ; Load string byte from ds:si into al
 

@@ -254,6 +254,19 @@ boot32:
     mov gs, ax
     mov ss, ax
 
+    
+    mov     ecx, [g_width]
+    imul    ecx, [g_height]
+    mov     eax, [g_linearFrameBuffer]
+
+
+    .loopFillScreen:
+    mov     dword[eax], 0x00FF0000
+    add     eax, 4
+    loop    .loopFillScreen             ; Loops around ECX times, and also decrements ECX until 0
+
+    DEBUGBREAK
+
     mov     esi, szHelloFrom32b
     call    PrintStrVgaTextMem
 
@@ -265,6 +278,7 @@ boot32:
 ;mov al,0x02      ; the color of the pixel
 ;mov [edi],al
     ; print loading circle, then transition to another gfx mode, and show same loading circle
+
 
 DEBUGBREAK
     mov     eax, dword [ebp-0x04]
