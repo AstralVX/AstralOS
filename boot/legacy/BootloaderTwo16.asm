@@ -35,7 +35,7 @@ SECTION .bss
         .segment_b                 RESW 1
         .win_func_ptr              RESD 1   ; deprecated used to switch banks from protected mode without returning to real mode
         .pitch                     RESW 1   ; number of bytes per horizontal line
-        .width                     RESW 1   ; width in pixels
+        .width                     RESW 1   ; width in pixels (offset 18-19)
         .height                    RESW 1   ; height in pixels
         .w_char                    RESB 1   ; unused...
         .y_char                    RESB 1   ; ...
@@ -72,26 +72,41 @@ jmp main
 ; Start
 ;dd 0x41414141               ; Our second stage bootloader magic header
 
-
+;
+; Set video mode to VESA whilst still in real mode
+;
+; Stack:
+;   [bp - 0x02]: local arg 1..
+;   [bp + 0x00]: 
+;   [bp + 0x02]: ret
+; Args:
+;   [bp + 0x04]: UINT16 width
+;   [bp + 0x06]: UINT16 height
+;   [bp + 0x08]: UINT16 bitsperpixel
+;
+; Clobbers:
+;   All, including ES
+;
 SetGraphicsToVesa:    
-    push    bp                      ; Create stack frame
-    mov     bp, sp            
-    sub     sp, 0x306               ; Local stack variables
-                                    ; [000h - 1FFh]: [bp-04h]:  UCHAR   vbeInfoStruct[512]
-                                    ; [200h - 201h]: [bp-202h]: UINT16  videoModeOffset
-                                    ; [202h - 203h]: [bp-204h]: UINT16  videoModeSegment
-                                    ; [204h - 205h]: [bp-206h]: UINT16  videoMode                       // The video mode itself e.g. 0x115
-                                    ; [206h - 305h]: [bp-306h]: VBE_MODE_INFO_STRUCTURE vbeModeInfo     // Sizeof 256
+    push    bp                          ; Create stack frame
+    mov     ax, ss                      ; Video interrupts in this subroutine heavily uses segment 'ES' ES:DI for pointers, so temporairly
+    mov     es, ax                      ; set ES to our Stack Segment (SS) at 0x6000
+    mov     bp, sp              
+    sub     sp, 0x306                   ; Local stack variables
+                                        ; [000h - 1FFh]: [bp-04h]:  UCHAR   vbeInfoStruct[512]
+                                        ; [200h - 201h]: [bp-202h]: UINT16  videoModeOffset
+                                        ; [202h - 203h]: [bp-204h]: UINT16  videoModeSegment
+                                        ; [204h - 205h]: [bp-206h]: UINT16  videoMode                       // The video mode itself e.g. 0x115
+                                        ; [206h - 305h]: [bp-306h]: VBE_MODE_INFO_STRUCTURE vbeModeInfo     // Sizeof 256
 
-    mov     ax, 0x4F00              ; Get VBE BIOS info
-    lea     bx, word [bp-04h]       ; vbeInfoStruct
-
-    mov     di, bx
+    mov     ax, 0x4F00                  ; Function - Get VBE BIOS info
+    lea     bx, word [bp-04h]           ; &vbeInfoStruct into es:di, as interrupt need at specific ES:DI segment
+    mov     word[es:di], bx
     mov     word[es:di + VBE_INFO_STRUCTURE.signature],     'VB'        ; On input vbeInfoStruct.Signature must be 'VBE2'
     mov     word[es:di + VBE_INFO_STRUCTURE.signature + 2], 'E2'
-    int     0x10                    ; Video services
+    int     0x10                        ; Interrupt - Video services
 
-    cmp     ax, 0x004F				; Verify BIOS support VBE, as it should respond with 004F if so
+    cmp     ax, 0x004F				    ; Verify BIOS support VBE, as it should respond with 004F if success
     jz      .validateSignatureResponse
     mov     si, szErrVbeSupport
     jmp     .error
@@ -128,6 +143,7 @@ SetGraphicsToVesa:
     mov     word [bp - 206h], dx        ; Save mode found
 
     cmp     dx, 0xFFFF
+    mov     si, szErrVideoModeNotFound
     jz      .errLastVidMode
 
     mov     bx, dx                      ; Debug print
@@ -137,36 +153,27 @@ SetGraphicsToVesa:
 
     mov     ax, 0x4F01				    ; Get VBE mode info
     mov     cx, word [bp - 206h]        ; Video Mode
-    lea     di, word [bp - 306h]        ; &vbeModeInfo
+    lea     di, word [bp - 306h]        ; &vbeModeInfo    
     int     0x10                        ; Load mode infos at VBE_MODE_INFO_LABELS
 
     cmp     ax, 0x004F
     mov     si, szErr10_4F01
     jnz     .error                       ; Check for success code in AX
 
-    cmp word [bp - 206h], 0x115      ; Check Video Mode for 800x600x24
-    jnz .findNextMode                ; Stop abritrarily at mode 0x115
+    ; Cmp modes found with desired width/height/bpp
+    mov     bx, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.width]
+    cmp     bx, word [ss:bp + 0x4]         ; Arg width    
+    jnz     .findNextMode
+
+    mov     bx, word [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.height]
+    cmp     bx, word [ss:bp + 0x6]         ; Arg height
+    jnz     .findNextMode
+
+    mov     bl, byte [ss:bp - 0x306 + VBE_MODE_INFO_STRUCTURE.bpp]
+    cmp     bl, byte [ss:bp + 0x8]         ; Arg bits per pixel
+    jnz     .findNextMode
 
 
-
-; .findMode:
-; 	mov     dx, [fs:si]
-; 	add     si, 2
-; 	mov     word [bp - 204h], si        ; Increment segment
-; 	mov     word [bp - 206h], dx
-; 	mov     ax, 0
-; 	mov     fs, ax
-
-; 	cmp     word [bp - 206h], 0xFFFF    ; End of list?
-; 	jz      .error
-
-; 	push    es
-; 	mov     ax, 0x4F01				    ; Get VBE mode info
-; 	mov     cx, word [bp - 206h]        ; Mode
-; 	lea     di, word [bp - 306h]        ; &vbeModeInfo
-;     DEBUGBREAK
-; 	int     0x10
-; 	pop     es
 
 
 .foundMode:
@@ -184,7 +191,7 @@ SetGraphicsToVesa:
     DEBUGBREAK
     mov     sp, bp                  ; Unwind stack frame
     pop     bp
-    ret
+    ret     6                       ; Return and increase SP by 3 word args we pushed onto the stack
 
 ;
 ; Print a countdown string (e.g. 543210) with a delay after every print
@@ -244,6 +251,7 @@ main:
     ; When we transition into protected mode later, we don't have access to BIOS interrupts, and too much effort to write 
     ; a disk/floppy controller in x86 asm to read the kernel image from disk and map it in. So just do it now with BIOS INT!
     ;
+    push    es                                  ; Save previous ES
     mov     ax, KERNEL_ADDR_ES                  ; ES:BX is the larger target memory location of disk sectors
     mov     es, ax
     mov     bx, KERNEL_ADDR_BX
@@ -253,7 +261,7 @@ main:
     mov     dh, 0                               ; Head number 0
     mov     dl, DRIVE                           ; Drive number (QEMU index)
     call    DiskIntReadSectors
-
+    pop     es
 
     ;mov     si, szSwitchToVga
     ;call    PrintStrInt    
@@ -274,7 +282,12 @@ main:
 ; mov dx, 100       ; y = 0
 ; int 10h         ; BIOS interrupt
 
+    push    es
+    push    32                  ; bits per pixel
+    push    600                 ; height
+    push    800                 ; width
     call    SetGraphicsToVesa
+    pop     es
 
     call    Init32b
 
@@ -293,10 +306,10 @@ main:
 szIntroStage2:                  db "Executing from Stage 2 Bootloader", 13, 10, 0
 szLoadingKernel:                db "Loading kernel into memory", 13, 10, 0
 szSwitchToVga:                  db "Switching to VGA 640x480 in .. ", 0
-szErrVbeSupport:                db "Err - BIOS doesn't support VBE", 13, 10
-szErrVesaSig:                   db "Err - VESA signature failed", 13, 10
-szErr10_4F01:                   db "Err - INT 10h, 4F01h failed", 13, 10
-szErrVideoModeNotFound:         db "Err - searched all VideoModes and couldn't find target", 13, 10
+szErrVbeSupport:                db "Err - BIOS doesn't support VBE", 13, 10, 0
+szErrVesaSig:                   db "Err - VESA signature failed", 13, 10, 0
+szErr10_4F01:                   db "Err - INT 10h, 4F01h failed", 13, 10, 0
+szErrVideoModeNotFound:         db 13, 10, "Err - searched all VideoModes and couldn't find target", 13, 10, 0
 szComma:                        db ", ", 0
 szFoundVidModes:                db "Found VideoModes: ", 0
 
